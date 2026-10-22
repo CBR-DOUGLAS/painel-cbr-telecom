@@ -12138,11 +12138,13 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 </script>
 <script>
 /* ============================================================
-   INTEGRAÇÃO TELEGRAM — aviso de nova OS (CBR TELECOM) — v2
+   INTEGRAÇÃO TELEGRAM — aviso de nova OS (CBR TELECOM) — v4
    Cole este bloco ANTES da tag </body> (no final do arquivo)
    ============================================================ */
 (function () {
-  // Formata data YYYY-MM-DD para DD/MM/AAAA
+  var SUPABASE_URL = 'https://mqvzerpvqzemqemrovwo.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_j6PYuHr__oT-UQSVuMUH5g__CCTvJEl';
+
   function formatarDataBR(iso) {
     if (!iso) return '';
     var partes = String(iso).split('-');
@@ -12150,38 +12152,38 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     return iso;
   }
 
-  // Envia o aviso para o técnico responsável
-  async function enviarNotificacaoOS(os) {
+  async function enviarNotificacaoOS(payload) {
     try {
-      var responsavel = os.tech || os.responsavel || os.tecnico || '';
+      var responsavel = payload.responsavel || payload.tecnico || '';
       if (!responsavel) return;
 
-      var { data: perfil, error } = await clienteNuvem
-        .from('perfis')
-        .select('telegram_chat_id')
-        .eq('nome', responsavel)
-        .maybeSingle();
-
-      if (error) throw error;
+      // 1. Busca o chat_id do técnico na tabela de perfis
+      var resPerfil = await fetch(
+        SUPABASE_URL + '/rest/v1/perfis?select=telegram_chat_id&nome=eq.' + encodeURIComponent(responsavel),
+        { headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY } }
+      );
+      var linhas = await resPerfil.json();
+      var perfil = Array.isArray(linhas) ? linhas[0] : null;
 
       if (!perfil || !perfil.telegram_chat_id) {
         console.log('Aviso não enviado: técnico sem Telegram cadastrado (' + responsavel + ')');
         return;
       }
 
-      var dataBR = formatarDataBR(os.date);
-      var horario = (dataBR ? dataBR + ' às ' : '') + (os.time || '');
+      var dataBR = formatarDataBR(payload.data || payload.date);
+      var horario = (dataBR ? dataBR + ' às ' : '') + (payload.hora || payload.time || '');
 
+      // 2. Chama a função que envia a mensagem
       var resposta = await fetch(
-        'https://mqvzerpvqzemqemrovwo.supabase.co/functions/v1/enviar-os',
+        SUPABASE_URL + '/functions/v1/enviar-os',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: perfil.telegram_chat_id,
-            os: os.id || '',
-            cliente: os.client || os.cliente || '',
-            endereco: os.address || os.endereco || '',
+            os: payload.id || '',
+            cliente: payload.cliente || payload.client || '',
+            endereco: payload.endereco || payload.address || '',
             horario: horario
           })
         }
@@ -12193,28 +12195,29 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     }
   }
 
-  // Conecta no salvamento: quando uma OS NOVA for inserida na nuvem,
-  // dispara o aviso automaticamente (funciona com qualquer nome de função)
+  // Observa a rede: quando o painel CREA uma OS nova (POST a ordens_servico,
+  // sem on_conflict), dispara o aviso automaticamente
   try {
-    var fromOriginal = clienteNuvem.from.bind(clienteNuvem);
-    clienteNuvem.from = function (tabela) {
-      var builder = fromOriginal(tabela);
-      if (tabela === 'ordens_servico') {
-        var insertOriginal = builder.insert.bind(builder);
-        builder.insert = function (valores, opcoes) {
-          var resultado = insertOriginal(valores, opcoes);
-          var novaOs = Array.isArray(valores) ? valores[0] : valores;
+    var fetchOriginal = window.fetch;
+    window.fetch = function (url, options) {
+      var resultado = fetchOriginal.apply(this, arguments);
+      try {
+        var u = String(url);
+        if (options && options.method === 'POST' &&
+            u.indexOf('/rest/v1/ordens_servico') !== -1 &&
+            u.indexOf('on_conflict') === -1) {
+          var corpo = JSON.parse(options.body || '{}');
+          var novaOs = Array.isArray(corpo) ? corpo[0] : corpo;
           if (novaOs) {
-            Promise.resolve(resultado).then(function () {
+            resultado.then(function () {
               enviarNotificacaoOS(novaOs);
             }).catch(function () {});
           }
-          return resultado;
-        };
-      }
-      return builder;
+        }
+      } catch (e) {}
+      return resultado;
     };
-    console.log('Integração Telegram v2 ativa.');
+    console.log('Integração Telegram v4 ativa.');
   } catch (e) {
     console.error('Integração Telegram: não foi possível conectar ao salvamento.', e);
   }
