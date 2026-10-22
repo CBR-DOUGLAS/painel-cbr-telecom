@@ -12138,7 +12138,8 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 </script>
 <script>
 /* ============================================================
-   INTEGRAÇÃO TELEGRAM — aviso de nova OS (CBR TELECOM)
+   INTEGRAÇÃO TELEGRAM — aviso de nova OS (CBR TELECOM) — v2
+   Cole este bloco ANTES da tag </body> (no final do arquivo)
    ============================================================ */
 (function () {
   // Formata data YYYY-MM-DD para DD/MM/AAAA
@@ -12155,7 +12156,6 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       var responsavel = os.tech || os.responsavel || os.tecnico || '';
       if (!responsavel) return;
 
-      // 1. Busca o chat_id do técnico na tabela de perfis
       var { data: perfil, error } = await clienteNuvem
         .from('perfis')
         .select('telegram_chat_id')
@@ -12164,13 +12164,11 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 
       if (error) throw error;
 
-      // 2. Técnico sem Telegram cadastrado → pula sem erro
       if (!perfil || !perfil.telegram_chat_id) {
         console.log('Aviso não enviado: técnico sem Telegram cadastrado (' + responsavel + ')');
         return;
       }
 
-      // 3. Chama a função que envia a mensagem
       var dataBR = formatarDataBR(os.date);
       var horario = (dataBR ? dataBR + ' às ' : '') + (os.time || '');
 
@@ -12195,24 +12193,33 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     }
   }
 
-  // Dispara o aviso automaticamente quando uma OS NOVA é salva na nuvem
+  // Conecta no salvamento: quando uma OS NOVA for inserida na nuvem,
+  // dispara o aviso automaticamente (funciona com qualquer nome de função)
   try {
-    var salvarOriginal = cloudSalvarOS;
-    if (typeof salvarOriginal === 'function') {
-      cloudSalvarOS = async function (osObj, isEdit) {
-        var resultado = await salvarOriginal(osObj, isEdit);
-        // Só avisa na criação (não em edição) e se salvou na nuvem
-        if (!isEdit && resultado && resultado.success !== false) {
-          enviarNotificacaoOS(osObj);
-        }
-        return resultado;
-      };
-    } else {
-      console.warn('Integração Telegram: função cloudSalvarOS não encontrada.');
-    }
+    var fromOriginal = clienteNuvem.from.bind(clienteNuvem);
+    clienteNuvem.from = function (tabela) {
+      var builder = fromOriginal(tabela);
+      if (tabela === 'ordens_servico') {
+        var insertOriginal = builder.insert.bind(builder);
+        builder.insert = function (valores, opcoes) {
+          var resultado = insertOriginal(valores, opcoes);
+          var novaOs = Array.isArray(valores) ? valores[0] : valores;
+          if (novaOs) {
+            Promise.resolve(resultado).then(function () {
+              enviarNotificacaoOS(novaOs);
+            }).catch(function () {});
+          }
+          return resultado;
+        };
+      }
+      return builder;
+    };
+    console.log('Integração Telegram v2 ativa.');
   } catch (e) {
     console.error('Integração Telegram: não foi possível conectar ao salvamento.', e);
   }
 })();
-</script></body>
+</script>
+</script>
+</body>
 </html>
