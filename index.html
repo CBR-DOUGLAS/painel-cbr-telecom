@@ -12138,7 +12138,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
 </script>
 <script>
 /* ============================================================
-   INTEGRAÇÃO TELEGRAM — aviso de nova OS (CBR TELECOM) — v4
+   INTEGRAÇÃO TELEGRAM — aviso de nova OS (CBR TELECOM) — v4.1
    Cole este bloco ANTES da tag </body> (no final do arquivo)
    ============================================================ */
 (function () {
@@ -12176,7 +12176,11 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
         SUPABASE_URL + '/functions/v1/enviar-os',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_KEY
+          },
           body: JSON.stringify({
             chat_id: perfil.telegram_chat_id,
             os: payload.id || '',
@@ -12193,8 +12197,6 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
     }
   }
 
-  // Observa a rede: quando o painel CREA uma OS nova (POST a ordens_servico,
-  // sem on_conflict), dispara o aviso automaticamente
   try {
     var fetchOriginal = window.fetch;
     window.fetch = function (url, options) {
@@ -12215,7 +12217,7 @@ table.shell-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 
       } catch (e) {}
       return resultado;
     };
-    console.log('Integração Telegram v4 ativa.');
+    console.log('Integração Telegram v4.1 ativa.');
   } catch (e) {
     console.error('Integração Telegram: não foi possível conectar ao salvamento.', e);
   }
